@@ -31,8 +31,6 @@ mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
 pointer-events:none}
 .card{border:1px dashed #cbd5e1;border-radius:10px;background:#fff;padding:8px;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .card canvas{width:100%;height:auto}
-/* removed .card .txt (we no longer add a caption) */
-
 @page{size:A4;margin:10mm}
 @media print{
   body{background:#fff}
@@ -40,9 +38,8 @@ pointer-events:none}
   .sheet-wrap{border:none}
   .sheet-grid{gap:8mm;padding:8mm}
   .card{border:1px dashed #cbd5e1;padding:4mm}
-  /* help some mobile print engines keep raster sharp */
-  canvas{image-rendering: crisp-edges; image-rendering: pixelated;}
-  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  canvas{image-rendering:crisp-edges;image-rendering:pixelated}
+  -webkit-print-color-adjust:exact;print-color-adjust:exact
 }
 .foot{text-align:center;color:#64748b;padding:12px}
 </style>
@@ -98,7 +95,7 @@ pointer-events:none}
     </div>
 
     <div class="preview">
-      <canvas id="preview" width="320" height="160"></canvas>
+      <canvas id="preview" width="370" height="180"></canvas>
       <div id="previewText" class="meta"></div>
     </div>
   </section>
@@ -129,14 +126,13 @@ pointer-events:none}
     { "id": "beverage-issn", "label": "Periodical Insert",  "hintFormat": "issn" },
     { "id": "custom",        "label": "Custom",             "hintFormat": "ean13" }
   ],
-  "sheet": { "cols": 3, "rows": 8 }   /* back to 3×8 so labels aren't needle-thin */
+  "sheet": { "cols": 3, "rows": 8 }
 }
 </script>
 
 <script>
 /* ===== Helpers ===== */
-const $ = (id)=>document.getElementById(id);
-function g(id){ return document.getElementById(id) || null; }
+const g = id => document.getElementById(id) || null;
 function ensureDom(){
   if(!g('type')){
     const row = document.querySelector('.panel .row');
@@ -146,19 +142,17 @@ function ensureDom(){
       row.insertBefore(sel, row.firstChild.nextSibling);
     }
   }
-  const needed = [
+  [
     ['format','select'],['fg','input'],['remember','input'],
     ['text','input'],['addon','input'],
     ['count','input'],['serialstart','input'],['serialpad','input'],
     ['btnPreview','button'],['btnAdd','button'],['btnClear','button'],['btnPrint','button'],
     ['preview','canvas'],['previewText','div'],['sheet','div']
-  ];
-  needed.forEach(([id,tag])=>{
+  ].forEach(([id,tag])=>{
     if(!g(id)){
       const row = document.querySelector('.panel .row:last-of-type') || document.querySelector('.panel');
       if(!row) return;
-      const el = document.createElement(tag);
-      el.id = id;
+      const el = document.createElement(tag); el.id = id;
       if(tag==='button'){ el.textContent = id.replace(/^btn/,''); }
       row.appendChild(el);
     }
@@ -166,17 +160,7 @@ function ensureDom(){
 }
 
 /* ===== State ===== */
-const DEFAULTS = {
-  type:'retail',
-  format:'ean13',
-  fg:'#000000',
-  text:'',
-  addon:'',
-  count:1,
-  serialstart:1,
-  serialpad:0,
-  remember:false
-};
+const DEFAULTS = { type:'retail', format:'ean13', fg:'#000000', text:'', addon:'', count:1, serialstart:1, serialpad:0, remember:false };
 let TYPE_HINT = {};
 let SHEET_CFG = { cols:3, rows:8 };
 
@@ -197,41 +181,41 @@ function readTypesJSON(){
 
 /* ===== Persist ===== */
 function loadState(){
-  try{ const raw = localStorage.getItem('bcg_state'); return raw ? {...DEFAULTS, ...JSON.parse(raw)} : {...DEFAULTS}; }
+  try{ const raw=localStorage.getItem('bcg_state'); return raw? {...DEFAULTS,...JSON.parse(raw)} : {...DEFAULTS}; }
   catch{ return {...DEFAULTS}; }
 }
 function saveState(){
-  const rem = g('remember'); if(!rem || !rem.checked) return;
+  if(!(g('remember')&&g('remember').checked)) return;
   const state = {
-    type: g('type')?.value || DEFAULTS.type,
-    format: g('format')?.value || DEFAULTS.format,
-    fg: g('fg')?.value || DEFAULTS.fg,
-    text: g('text')?.value || '',
-    addon: g('addon')?.value || '',
-    count: parseInt(g('count')?.value||'1',10),
-    serialstart: parseInt(g('serialstart')?.value||'1',10),
-    serialpad: parseInt(g('serialpad')?.value||'0',10),
-    remember: true
+    type:g('type')?.value||DEFAULTS.type,
+    format:g('format')?.value||DEFAULTS.format,
+    fg:g('fg')?.value||DEFAULTS.fg,
+    text:g('text')?.value||'',
+    addon:g('addon')?.value||'',
+    count:parseInt(g('count')?.value||'1',10),
+    serialstart:parseInt(g('serialstart')?.value||'1',10),
+    serialpad:parseInt(g('serialpad')?.value||'0',10),
+    remember:true
   };
   try{ localStorage.setItem('bcg_state', JSON.stringify(state)); }catch{}
 }
 function applyState(s){
-  if(g('type')) g('type').value = s.type;
-  if(g('format')) g('format').value = s.format;
-  if(g('fg')) g('fg').value = s.fg;
-  if(g('text')) g('text').value = s.text;
-  if(g('addon')) g('addon').value = s.addon;
-  if(g('count')) g('count').value = s.count;
-  if(g('serialstart')) g('serialstart').value = s.serialstart;
-  if(g('serialpad')) g('serialpad').value = s.serialpad;
-  if(g('remember')) g('remember').checked = !!s.remember;
+  if(g('type')) g('type').value=s.type;
+  if(g('format')) g('format').value=s.format;
+  if(g('fg')) g('fg').value=s.fg;
+  if(g('text')) g('text').value=s.text;
+  if(g('addon')) g('addon').value=s.addon;
+  if(g('count')) g('count').value=s.count;
+  if(g('serialstart')) g('serialstart').value=s.serialstart;
+  if(g('serialpad')) g('serialpad').value=s.serialpad;
+  if(g('remember')) g('remember').checked=!!s.remember;
 }
 
 /* ===== Format helpers ===== */
 function pickFormatByType(){
-  const t = g('type')?.value || 'retail';
-  const hint = TYPE_HINT[t] || 'ean13';
-  if(g('format')) g('format').value = hint;
+  const t=g('type')?.value||'retail';
+  const hint=TYPE_HINT[t]||'ean13';
+  if(g('format')) g('format').value=hint;
 }
 function gs1WithCheck(num12){
   if(!/^[0-9]{12}$/.test(num12)) return num12;
@@ -273,6 +257,8 @@ function normalizeInput(fmt, text, addon){
   if(fmt==='gs1-128'){ return { sym:'gs1-128', text, opts:{includetext:true, textxalign:'center'} }; }
   return { sym:'ean13', text, opts:{includetext:true} };
 }
+
+/* ===== Draw ===== */
 function drawToCanvas(canvas, sym, text, opts, color){
   if(!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -282,73 +268,104 @@ function drawToCanvas(canvas, sym, text, opts, color){
     scale:2, height:12,
     paddingwidth:8, paddingheight:8,
     backgroundcolor:'#FFFFFF',
-    includetext:false, /* default, opts may turn it on */
+    includetext:false,
     ...opts
   };
   if(color){ params.barcolor = color; }
   if(window.bwipjs && bwipjs.toCanvas){ bwipjs.toCanvas(canvas, params); }
 }
 
-/* ===== Actions ===== */
+/* ===== UI actions ===== */
 function preview(){
-  const fmt = g('format')?.value || 'ean13';
-  const base = (g('text')?.value || '').trim();
-  const addon = (g('addon')?.value || '').trim();
-  const color = g('fg')?.value || '#000000';
-  const conf = normalizeInput(fmt, base, addon);
-  if(!conf.text){ if(g('previewText')) g('previewText').textContent = 'Enter a code'; return; }
-  /* preview canvas size kept modest */
-  const c = g('preview'); if(c){ c.width = 370; c.height = 180; }
+  const fmt=g('format')?.value||'ean13';
+  const base=(g('text')?.value||'').trim();
+  const addon=(g('addon')?.value||'').trim();
+  const color=g('fg')?.value||'#000000';
+  const conf=normalizeInput(fmt, base, addon);
+  if(!conf.text){ if(g('previewText')) g('previewText').textContent='Enter a code'; return; }
+  const c=g('preview'); if(c){ c.width=370; c.height=180; }
   drawToCanvas(g('preview'), conf.sym, conf.text, conf.opts, color);
   if(g('previewText')) g('previewText').textContent = conf.sym.toUpperCase() + ' • ' + conf.text;
 }
-
 function generateBatchItems(){
-  const count = parseInt(g('count')?.value||'1',10);
-  const start = parseInt(g('serialstart')?.value||'1',10);
-  const pad = parseInt(g('serialpad')?.value||'0',10);
-  const base = (g('text')?.value || '').trim();
+  const count=parseInt(g('count')?.value||'1',10);
+  const start=parseInt(g('serialstart')?.value||'1',10);
+  const pad=parseInt(g('serialpad')?.value||'0',10);
+  const base=(g('text')?.value||'').trim();
   const items=[];
   for(let i=0;i<count;i++){
-    const n = (start+i).toString().padStart(pad, '0');
-    items.push(base.replace(/\{n\}/g, n));
+    const n=(start+i).toString().padStart(pad,'0');
+    items.push(base.replace(/\{n\}/g,n));
   }
   return items.length?items:[''];
 }
-
 function addToSheet(){
-  const sheet = g('sheet'); if(!sheet) return;
-  const color = g('fg')?.value || '#000000';
-  const fmt = g('format')?.value || 'ean13';
-  const addon = (g('addon')?.value || '').trim();
-  const items = generateBatchItems();
-
-  items.forEach((val)=>{
-    const {sym,text,opts} = normalizeInput(fmt, val, addon);
+  const sheet=g('sheet'); if(!sheet) return;
+  const color=g('fg')?.value||'#000000';
+  const fmt=g('format')?.value||'ean13';
+  const addon=(g('addon')?.value||'').trim();
+  const items=generateBatchItems();
+  items.forEach(val=>{
+    const {sym,text,opts}=normalizeInput(fmt,val,addon);
     if(!text) return;
-
-    const card = document.createElement('div');
-    card.className='card';
-
-    /* FIX #2: use sane canvas size per card (not full A4).
-       These match the preview and print well within a 3×8 grid. */
-    const can = document.createElement('canvas');
-    can.width = 370;
-    can.height = 180;
-
-    drawToCanvas(can, sym, text, opts, color);
-
-    /* FIX #1: DO NOT add a caption under the barcode (avoid duplicate code text) */
-    // const cap = document.createElement('div'); cap.className='txt'; cap.textContent = text;
-    // card.appendChild(cap);
-
+    const card=document.createElement('div'); card.className='card';
+    const can=document.createElement('canvas'); can.width=370; can.height=180;
+    drawToCanvas(can,sym,text,opts,color);
     card.appendChild(can);
     sheet.appendChild(card);
   });
 }
-
 function clearSheet(){ const s=g('sheet'); if(s) s.innerHTML=''; }
-function printSheet(){ window.print(); }
+
+/* ===== NEW: Download A4 PNG of current preview ===== */
+const A4PX = { w:2480, h:3508 };      // ≈300dpi
+const A4_MARGIN = 200;                 // px margin all around
+function is2D(fmt){ return fmt==='qrcode' || fmt==='datamatrix'; }
+function makeHiResBarcodeCanvas(sym, text, opts, color, fmt){
+  const availW = A4PX.w - A4_MARGIN*2;
+  const bw = Math.max(600, availW);
+  const bh = is2D(fmt) ? bw : Math.max(600, Math.round(bw/2.2));
+
+  const c = document.createElement('canvas');
+  c.width = bw; c.height = bh;
+
+  const params = {
+    bcid:sym, text,
+    width: Math.max(10, bw - 40),
+    paddingwidth:20, paddingheight:20,
+    backgroundcolor:'#FFFFFF',
+    includetext:true, textxalign:'center',
+    ...opts
+  };
+  if(!is2D(fmt)){ params.height = Math.max(10, Math.round((bh-40)/10)); }
+  if(color) params.barcolor = color;
+
+  if(window.bwipjs && bwipjs.toCanvas){ bwipjs.toCanvas(c, params); }
+  return c;
+}
+function downloadA4PNG(){
+  const fmt   = g('format')?.value || 'ean13';
+  const base  = (g('text')?.value || '').trim();
+  const addon = (g('addon')?.value || '').trim();
+  const color = g('fg')?.value || '#000000';
+  const conf  = normalizeInput(fmt, base, addon);
+  if(!conf.text){ alert('Enter a code first.'); return; }
+
+  const page = document.createElement('canvas');
+  page.width = A4PX.w; page.height = A4PX.h;
+  const ctx = page.getContext('2d');
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0,0,page.width,page.height);
+
+  const bc = makeHiResBarcodeCanvas(conf.sym, conf.text, conf.opts, color, fmt);
+  const x = Math.round((page.width - bc.width)/2);
+  const y = Math.round((page.height - bc.height)/2);
+  ctx.drawImage(bc, x, y);
+
+  const a = document.createElement('a');
+  a.href = page.toDataURL('image/png');
+  a.download = `barcode_${conf.sym}_${conf.text}.png`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
 
 /* ===== Wire & Boot ===== */
 function wire(){
@@ -360,19 +377,21 @@ function wire(){
   g('count')?.addEventListener('input', saveState);
   g('serialstart')?.addEventListener('input', saveState);
   g('serialpad')?.addEventListener('input', saveState);
+
   g('remember')?.addEventListener('change', saveState);
   g('btnPreview')?.addEventListener('click', preview);
   g('btnAdd')?.addEventListener('click', ()=>{ addToSheet(); saveState(); });
   g('btnClear')?.addEventListener('click', clearSheet);
-  g('btnPrint')?.addEventListener('click', printSheet);
-}
 
+  /* changed: Print Sheet now downloads PNG */
+  g('btnPrint')?.addEventListener('click', downloadA4PNG);
+}
 function boot(){
   ensureDom();
   readTypesJSON();
   const state = loadState();
   applyState(state);
-  if (!state.remember || !state.format) { pickFormatByType(); }
+  if(!state.remember || !state.format){ pickFormatByType(); }
   preview();
   wire();
 }
