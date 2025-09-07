@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Barcode Generator</title>
 <link rel="icon" href="data:,">
-<script src="https://unpkg.com/bwip-js/dist/bwip-js-min.js"></script>
+<!-- bwip-js for barcodes -->
+<script src="https://unpkg.com/bwip-js/dist/bwip-js-min.js" defer></script>
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#f8fafc;color:#0f172a}
@@ -109,6 +110,7 @@ pointer-events:none;
   <small>A4 layout • 3×8 grid • dashed cut marks • localStorage “Remember”</small>
 </footer>
 
+<!-- Editable JSON for product “types” and default format hints -->
 <script type="application/json" id="product-types">
 {
   "types": [
@@ -131,262 +133,263 @@ pointer-events:none;
 </script>
 
 <script>
-// Tiny helper to get elements by ID.
-const $ = id => document.getElementById(id);
+/* ============ Helpers ============ */
+const $ = (id)=>document.getElementById(id);
 
-// Default state used when nothing is stored in localStorage.
-const DEFAULTS = {
-  type: 'retail',
-  format: 'ean13',
-  fg: '#000000',
-  text: '',
-  addon: '',
-  count: 1,
-  serialstart: 1,
-  serialpad: 0,
-  remember: false
-};
+// Safe getter: returns element or null (no crash).
+function g(id){ return document.getElementById(id) || null; }
 
-let TYPE_HINT = {};
-let SHEET_CFG = { cols: 3, rows: 8 };
-
-// Read the JSON block for types and populate the type selector.
-function readTypesJSON() {
-  try {
-    const raw = document.getElementById('product-types').textContent.trim();
-    const data = JSON.parse(raw);
-    const sel = $('#type');
-    sel.innerHTML = '';
-    data.types.forEach(t => {
-      const opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = t.label;
-      sel.appendChild(opt);
-      TYPE_HINT[t.id] = t.hintFormat || 'ean13';
-    });
-    SHEET_CFG = data.sheet || SHEET_CFG;
-    document.querySelector('.sheet-grid').style.setProperty('--cols', SHEET_CFG.cols);
-    document.querySelector('.sheet-grid').style.setProperty('--rows', SHEET_CFG.rows);
-  } catch (e) {
-    console.error('Types JSON error:', e);
+// Guard: verifies required nodes exist; if not, it creates minimal fallbacks.
+function ensureDom(){
+  // Ensure the Type select exists
+  if(!g('type')){
+    const row = document.querySelector('.panel .row');
+    if(row){
+      const lbl = document.createElement('label'); lbl.htmlFor='type'; lbl.textContent='Type';
+      const sel = document.createElement('select'); sel.id='type';
+      row.insertBefore(sel, row.firstChild.nextSibling); // after first label if present
+    }
   }
-}
-
-// Load saved state from localStorage.
-function loadState() {
-  const raw = localStorage.getItem('bcg_state');
-  if (!raw) return { ...DEFAULTS };
-  try {
-    return { ...DEFAULTS, ...JSON.parse(raw) };
-  } catch {
-    return { ...DEFAULTS };
-  }
-}
-
-// Save current state to localStorage (only if “Remember” is checked).
-function saveState() {
-  if (!$('#remember').checked) return;
-  const state = {
-    type: $('#type').value,
-    format: $('#format').value,
-    fg: $('#fg').value,
-    text: $('#text').value,
-    addon: $('#addon').value,
-    count: parseInt($('#count').value || '1', 10),
-    serialstart: parseInt($('#serialstart').value || '1', 10),
-    serialpad: parseInt($('#serialpad').value || '0', 10),
-    remember: $('#remember').checked
-  };
-  localStorage.setItem('bcg_state', JSON.stringify(state));
-}
-
-// Apply loaded state to the UI.
-function applyState(s) {
-  $('#type').value = s.type;
-  $('#format').value = s.format;
-  $('#fg').value = s.fg;
-  $('#text').value = s.text;
-  $('#addon').value = s.addon;
-  $('#count').value = s.count;
-  $('#serialstart').value = s.serialstart;
-  $('#serialpad').value = s.serialpad;
-  $('#remember').checked = !!s.remember;
-}
-
-// When type changes, pick a sensible format automatically.
-function pickFormatByType() {
-  const t = $('#type').value;
-  const hint = TYPE_HINT[t] || 'ean13';
-  $('#format').value = hint;
-}
-
-// Helpers for check-digit calculations.
-function gs1WithCheck(num12) {
-  if (!/^[0-9]{12}$/.test(num12)) return num12;
-  let sum = 0;
-  for (let i = 0; i < 12; i++) {
-    const d = +num12[i];
-    sum += (i % 2 ? 3 : 1) * d;
-  }
-  const cd = (10 - (sum % 10)) % 10;
-  return num12 + cd;
-}
-function upcWithCheck(num11) {
-  if (!/^[0-9]{11}$/.test(num11)) return num11;
-  let odd = 0, even = 0;
-  for (let i = 0; i < 11; i++) {
-    const d = +num11[i];
-    if (i % 2 === 0) odd += d; else even += d;
-  }
-  const cd = (10 - ((odd * 3 + even) % 10)) % 10;
-  return num11 + cd;
-}
-
-// Normalize user input depending on format.
-function normalizeInput(fmt, text, addon) {
-  if (fmt === 'isbn') {
-    let num = text.replace(/[^0-9Xx]/g, '').toUpperCase();
-    if (num.length === 10) { num = '978' + num.slice(0, 9); num = gs1WithCheck(num); }
-    if (num.length === 12) { num = gs1WithCheck(num); }
-    return { sym: 'ean13', text: num, opts: { includetext: true, textxalign: 'center' } };
-  }
-  if (fmt === 'issn') {
-    let num = text.replace(/[^0-9]/g, '');
-    if (num.length === 8) { num = '977' + num.slice(0, 7) + '00'; num = gs1WithCheck(num); }
-    if (num.length === 12) { num = gs1WithCheck(num); }
-    return { sym: 'ean13', text: num, opts: { includetext: true, textxalign: 'center', addontext: (addon?.trim() || '') } };
-  }
-  if (fmt === 'ean13') {
-    let num = text.replace(/[^0-9]/g, '');
-    if (num.length === 12) { num = gs1WithCheck(num); }
-    return { sym: 'ean13', text: num, opts: { includetext: true, textxalign: 'center', addontext: (addon?.trim() || '') } };
-  }
-  if (fmt === 'upca') {
-    let num = text.replace(/[^0-9]/g, '');
-    if (num.length === 11) { num = upcWithCheck(num); }
-    return { sym: 'upca', text: num, opts: { includetext: true, textxalign: 'center' } };
-  }
-  if (fmt === 'code128') { return { sym: 'code128', text, opts: { includetext: true, textxalign: 'center' } }; }
-  if (fmt === 'qrcode') { return { sym: 'qrcode', text, opts: {} }; }
-  if (fmt === 'datamatrix') { return { sym: 'datamatrix', text, opts: {} }; }
-  if (fmt === 'pharmacode') { return { sym: 'pharmacode', text: text.replace(/[^0-9]/g, ''), opts: {} }; }
-  if (fmt === 'gs1-128') { return { sym: 'gs1-128', text, opts: { includetext: true, textxalign: 'center' } }; }
-  return { sym: 'ean13', text, opts: { includetext: true } };
-}
-
-// Draw barcode onto a canvas.
-function drawToCanvas(canvas, sym, text, opts, color) {
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const params = {
-    bcid: sym,
-    text,
-    scale: 2,
-    height: 12,
-    paddingwidth: 8,
-    paddingheight: 8,
-    backgroundcolor: '#FFFFFF',
-    includetext: false,
-    ...opts
-  };
-  if (color) { params.barcolor = color; }
-  bwipjs.toCanvas(canvas, params);
-}
-
-// Preview single code in the left panel.
-function preview() {
-  const fmt = $('#format').value;
-  const base = $('#text').value.trim();
-  const addon = $('#addon').value.trim();
-  const color = $('#fg').value;
-  const conf = normalizeInput(fmt, base, addon);
-  if (!conf.text) {
-    $('#previewText').textContent = 'Enter a code';
-    return;
-  }
-  try {
-    drawToCanvas($('#preview'), conf.sym, conf.text, conf.opts, color);
-    $('#previewText').textContent = conf.sym.toUpperCase() + ' • ' + conf.text;
-  } catch (e) {
-    $('#previewText').textContent = 'Error: ' + (e.message || e);
-  }
-}
-
-// Generate multiple codes based on {n} placeholder.
-function generateBatchItems() {
-  const count = parseInt($('#count').value || '1', 10);
-  const start = parseInt($('#serialstart').value || '1', 10);
-  const pad = parseInt($('#serialpad').value || '0', 10);
-  const base = $('#text').value.trim();
-  const items = [];
-  for (let i = 0; i < count; i++) {
-    const n = (start + i).toString().padStart(pad, '0');
-    items.push(base.replace(/\{n\}/g, n));
-  }
-  return items.length ? items : [''];
-}
-
-// Add barcodes to the sheet.
-function addToSheet() {
-  const sheet = $('#sheet');
-  const color = $('#fg').value;
-  const fmt = $('#format').value;
-  const addon = $('#addon').value.trim();
-  const items = generateBatchItems();
-  items.forEach(val => {
-    const { sym, text, opts } = normalizeInput(fmt, val, addon);
-    if (!text) return;
-    const card = document.createElement('div');
-    card.className = 'card';
-    const can = document.createElement('canvas');
-    can.width = 370;
-    can.height = 180;
-    try {
-      drawToCanvas(can, sym, text, opts, color);
-      const cap = document.createElement('div');
-      cap.className = 'txt';
-      cap.textContent = text;
-      card.appendChild(can);
-      card.appendChild(cap);
-      sheet.appendChild(card);
-    } catch (e) {}
+  // Ensure other inputs exist; if they don’t, create them to avoid nulls.
+  const needed = [
+    ['format','select'],['fg','input'],['remember','input'],
+    ['text','input'],['addon','input'],
+    ['count','input'],['serialstart','input'],['serialpad','input'],
+    ['btnPreview','button'],['btnAdd','button'],['btnClear','button'],['btnPrint','button'],
+    ['preview','canvas'],['previewText','div'],['sheet','div']
+  ];
+  needed.forEach(([id,tag])=>{
+    if(!g(id)){
+      const row = document.querySelector('.panel .row:last-of-type') || document.querySelector('.panel');
+      if(!row) return;
+      const el = document.createElement(tag);
+      el.id = id;
+      if(tag==='button'){ el.textContent = id.replace(/^btn/,''); }
+      row.appendChild(el);
+    }
   });
 }
 
-// Clear the sheet.
-function clearSheet() { $('#sheet').innerHTML = ''; }
-function printSheet() { window.print(); }
+/* ============ State ============ */
+const DEFAULTS = {
+  type:'retail',
+  format:'ean13',
+  fg:'#000000',
+  text:'',
+  addon:'',
+  count:1,
+  serialstart:1,
+  serialpad:0,
+  remember:false
+};
 
-// Attach event handlers.
-function wire() {
-  $('#type').addEventListener('change', () => { pickFormatByType(); preview(); saveState(); });
-  $('#format').addEventListener('change', () => { preview(); saveState(); });
-  $('#fg').addEventListener('input', () => { preview(); saveState(); });
-  $('#text').addEventListener('input', () => { preview(); saveState(); });
-  $('#addon').addEventListener('input', () => { preview(); saveState(); });
-  $('#count').addEventListener('input', saveState);
-  $('#serialstart').addEventListener('input', saveState);
-  $('#serialpad').addEventListener('input', saveState);
-  $('#remember').addEventListener('change', saveState);
-  $('#btnPreview').addEventListener('click', preview);
-  $('#btnAdd').addEventListener('click', () => { addToSheet(); saveState(); });
-  $('#btnClear').addEventListener('click', clearSheet);
-  $('#btnPrint').addEventListener('click', printSheet);
+let TYPE_HINT = {};
+let SHEET_CFG = { cols:3, rows:8 };
+
+/* ============ JSON Types ============ */
+function readTypesJSON(){
+  const block = g('product-types');
+  if(!block) return; // silently skip if missing
+  let data;
+  try{
+    data = JSON.parse(block.textContent.trim());
+  }catch(e){
+    return; // invalid JSON: skip population
+  }
+  const sel = g('type');
+  if(!sel) return; // DOM not ready / replaced: skip
+  sel.innerHTML = '';
+  (data.types||[]).forEach(t=>{
+    const opt = document.createElement('option');
+    opt.value = t.id;
+    opt.textContent = t.label;
+    sel.appendChild(opt);
+    TYPE_HINT[t.id] = t.hintFormat || 'ean13';
+  });
+  SHEET_CFG = data.sheet || SHEET_CFG;
+  const grid = document.querySelector('.sheet-grid');
+  if(grid){
+    grid.style.setProperty('--cols', SHEET_CFG.cols);
+    grid.style.setProperty('--rows', SHEET_CFG.rows);
+  }
 }
 
-// Bootstrap on DOM load.
-function boot() {
-  readTypesJSON();
-  const state = loadState();
-  applyState(state);
-  // If no remembered custom format, auto-set format based on type.
-  if (!state.remember || !state.format) {
-    pickFormatByType();
+/* ============ Persist ============ */
+function loadState(){
+  try{
+    const raw = localStorage.getItem('bcg_state');
+    return raw ? {...DEFAULTS, ...JSON.parse(raw)} : {...DEFAULTS};
+  }catch{ return {...DEFAULTS}; }
+}
+function saveState(){
+  const rem = g('remember');
+  if(!rem || !rem.checked) return;
+  const state = {
+    type: g('type')?.value || DEFAULTS.type,
+    format: g('format')?.value || DEFAULTS.format,
+    fg: g('fg')?.value || DEFAULTS.fg,
+    text: g('text')?.value || '',
+    addon: g('addon')?.value || '',
+    count: parseInt(g('count')?.value||'1',10),
+    serialstart: parseInt(g('serialstart')?.value||'1',10),
+    serialpad: parseInt(g('serialpad')?.value||'0',10),
+    remember: true
+  };
+  try{ localStorage.setItem('bcg_state', JSON.stringify(state)); }catch{}
+}
+function applyState(s){
+  if(g('type')) g('type').value = s.type;
+  if(g('format')) g('format').value = s.format;
+  if(g('fg')) g('fg').value = s.fg;
+  if(g('text')) g('text').value = s.text;
+  if(g('addon')) g('addon').value = s.addon;
+  if(g('count')) g('count').value = s.count;
+  if(g('serialstart')) g('serialstart').value = s.serialstart;
+  if(g('serialpad')) g('serialpad').value = s.serialpad;
+  if(g('remember')) g('remember').checked = !!s.remember;
+}
+
+/* ============ Format helpers ============ */
+function pickFormatByType(){
+  const t = g('type')?.value || 'retail';
+  const hint = TYPE_HINT[t] || 'ean13';
+  if(g('format')) g('format').value = hint;
+}
+function gs1WithCheck(num12){
+  if(!/^[0-9]{12}$/.test(num12)) return num12;
+  let sum=0;
+  for(let i=0;i<12;i++){ const d=+num12[i]; sum+= (i%2?3:1)*d }
+  const cd=(10-(sum%10))%10;
+  return num12+cd;
+}
+function upcWithCheck(num11){
+  if(!/^[0-9]{11}$/.test(num11)) return num11;
+  let odd=0,even=0;
+  for(let i=0;i<11;i++){ const d=+num11[i]; if(i%2===0) odd+=d; else even+=d }
+  const cd=(10-((odd*3+even)%10))%10;
+  return num11+cd;
+}
+function normalizeInput(fmt, text, addon){
+  if(fmt==='isbn'){
+    let num = text.replace(/[^0-9Xx]/g,'').toUpperCase();
+    if(num.length===10){ num = '978' + num.slice(0,9); num = gs1WithCheck(num) }
+    if(num.length===12){ num = gs1WithCheck(num) }
+    return { sym:'ean13', text:num, opts:{includetext:true, textxalign:'center'} };
   }
+  if(fmt==='issn'){
+    let num = text.replace(/[^0-9]/g,'');
+    if(num.length===8){ num = '977' + num.slice(0,7) + '00'; num = gs1WithCheck(num) }
+    if(num.length===12){ num = gs1WithCheck(num) }
+    const atxt = addon ? addon.trim() : '';
+    return { sym:'ean13', text:num, opts:{includetext:true, textxalign:'center', addontext:atxt} };
+  }
+  if(fmt==='ean13'){
+    let num = text.replace(/[^0-9]/g,'');
+    if(num.length===12){ num = gs1WithCheck(num) }
+    const atxt = addon ? addon.trim() : '';
+    return { sym:'ean13', text:num, opts:{includetext:true, textxalign:'center', addontext:atxt} };
+  }
+  if(fmt==='upca'){
+    let num = text.replace(/[^0-9]/g,'');
+    if(num.length===11){ num = upcWithCheck(num) }
+    return { sym:'upca', text:num, opts:{includetext:true, textxalign:'center'} };
+  }
+  if(fmt==='code128'){ return { sym:'code128', text, opts:{includetext:true, textxalign:'center'} }; }
+  if(fmt==='qrcode'){ return { sym:'qrcode', text, opts:{} }; }
+  if(fmt==='datamatrix'){ return { sym:'datamatrix', text, opts:{} }; }
+  if(fmt==='pharmacode'){ return { sym:'pharmacode', text:text.replace(/[^0-9]/g,''), opts:{} }; }
+  if(fmt==='gs1-128'){ return { sym:'gs1-128', text, opts:{includetext:true, textxalign:'center'} }; }
+  return { sym:'ean13', text, opts:{includetext:true} };
+}
+function drawToCanvas(canvas, sym, text, opts, color){
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const params = {
+    bcid:sym, text, scale:2, height:12,
+    paddingwidth:8, paddingheight:8,
+    backgroundcolor:'#FFFFFF', includetext:false, ...opts
+  };
+  if(color){ params.barcolor = color; }
+  // bwipjs may not be ready if the script hasn't loaded yet (defer fixes this)
+  if(window.bwipjs && bwipjs.toCanvas){
+    bwipjs.toCanvas(canvas, params);
+  }
+}
+
+/* ============ Actions ============ */
+function preview(){
+  const fmt = g('format')?.value || 'ean13';
+  const base = (g('text')?.value || '').trim();
+  const addon = (g('addon')?.value || '').trim();
+  const color = g('fg')?.value || '#000000';
+  const conf = normalizeInput(fmt, base, addon);
+  if(!conf.text){ if(g('previewText')) g('previewText').textContent = 'Enter a code'; return; }
+  drawToCanvas(g('preview'), conf.sym, conf.text, conf.opts, color);
+  if(g('previewText')) g('previewText').textContent = conf.sym.toUpperCase() + ' • ' + conf.text;
+}
+function generateBatchItems(){
+  const count = parseInt(g('count')?.value||'1',10);
+  const start = parseInt(g('serialstart')?.value||'1',10);
+  const pad = parseInt(g('serialpad')?.value||'0',10);
+  const base = (g('text')?.value || '').trim();
+  const items=[];
+  for(let i=0;i<count;i++){
+    const n = (start+i).toString().padStart(pad, '0');
+    items.push(base.replace(/\{n\}/g, n));
+  }
+  return items.length?items:[''];
+}
+function addToSheet(){
+  const sheet = g('sheet'); if(!sheet) return;
+  const color = g('fg')?.value || '#000000';
+  const fmt = g('format')?.value || 'ean13';
+  const addon = (g('addon')?.value || '').trim();
+  const items = generateBatchItems();
+  items.forEach((val)=>{
+    const {sym,text,opts} = normalizeInput(fmt, val, addon);
+    if(!text) return;
+    const card = document.createElement('div');
+    card.className='card';
+    const can = document.createElement('canvas');
+    can.width = 370; can.height = 180;
+    drawToCanvas(can, sym, text, opts, color);
+    const cap = document.createElement('div');
+    cap.className='txt'; cap.textContent = text;
+    card.appendChild(can); card.appendChild(cap);
+    sheet.appendChild(card);
+  });
+}
+function clearSheet(){ const s=g('sheet'); if(s) s.innerHTML=''; }
+function printSheet(){ window.print(); }
+
+/* ============ Wiring & Boot ============ */
+function wire(){
+  g('type')?.addEventListener('change', ()=>{ pickFormatByType(); preview(); saveState(); });
+  g('format')?.addEventListener('change', ()=>{ preview(); saveState(); });
+  g('fg')?.addEventListener('input', ()=>{ preview(); saveState(); });
+  g('text')?.addEventListener('input', ()=>{ preview(); saveState(); });
+  g('addon')?.addEventListener('input', ()=>{ preview(); saveState(); });
+  g('count')?.addEventListener('input', saveState);
+  g('serialstart')?.addEventListener('input', saveState);
+  g('serialpad')?.addEventListener('input', saveState);
+  g('remember')?.addEventListener('change', saveState);
+  g('btnPreview')?.addEventListener('click', preview);
+  g('btnAdd')?.addEventListener('click', ()=>{ addToSheet(); saveState(); });
+  g('btnClear')?.addEventListener('click', clearSheet);
+  g('btnPrint')?.addEventListener('click', printSheet);
+}
+
+function boot(){
+  ensureDom();          // create any missing nodes to avoid nulls
+  readTypesJSON();      // populate #type from JSON
+  const state = loadState();
+  applyState(state);    // apply saved state (no crashes if some nodes absent)
+  if (!state.remember || !state.format) { pickFormatByType(); } // set format based on type only if not remembered
   preview();
   wire();
 }
-document.addEventListener('DOMContentLoaded', boot);
+window.addEventListener('DOMContentLoaded', boot);
 </script>
 </body>
 </html>
