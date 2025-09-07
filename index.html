@@ -1,0 +1,349 @@
+Here’s a single-file HTML app. “Type” options load from an inline JSON block you can edit anytime. No shell—just paste this into index.html and open.
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Barcode Generator</title>
+<link rel="icon" href="data:,">
+<script src="https://unpkg.com/bwip-js/dist/bwip-js-min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#f8fafc;color:#0f172a}
+.topbar{position:sticky;top:0;background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 16px;z-index:10}
+.topbar h1{margin:0;font-size:18px}
+.wrap{max-width:1100px;margin:16px auto;padding:0 12px;display:grid;grid-template-columns:360px 1fr;gap:16px}
+.panel{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+label{font-size:12px;color:#475569}
+input[type="text"],input[type="number"],select{padding:8px 10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#0f172a;min-width:110px}
+button{padding:8px 12px;border:1px solid #d1d5db;background:#111827;color:#fff;border-radius:10px;cursor:pointer}
+button:active{transform:translateY(1px)}
+.chk{display:flex;align-items:center;gap:6px}
+.preview{margin-top:8px;display:flex;gap:12px;align-items:center}
+.preview canvas{background:#fff;border:1px dashed #cbd5e1;border-radius:8px}
+.meta{font-size:12px;color:#334155}
+.sheet-wrap{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:12px}
+.sheet-grid{--cols:3;--rows:8;--gap:8px;display:grid;grid-template-columns:repeat(var(--cols),1fr);gap:var(--gap);padding:12px;position:relative}
+.sheet-grid::before{content:"";position:absolute;inset:12px;background:
+repeating-linear-gradient(to right, transparent 0  calc((100% - (var(--cols)-1)*var(--gap))/var(--cols)), #e5e7eb calc((100% - (var(--cols)-1)*var(--gap))/var(--cols)) calc((100% - (var(--cols)-1)*var(--gap))/var(--cols) + var(--gap))),
+repeating-linear-gradient(to bottom, transparent 0 calc((100% - (var(--rows)-1)*var(--gap))/var(--rows)), #e5e7eb calc((100% - (var(--rows)-1)*var(--gap))/var(--rows)) calc((100% - (var(--rows)-1)*var(--gap))/var(--rows) + var(--gap)));
+mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0)
+}
+.card{border:1px dashed #cbd5e1;border-radius:10px;background:#fff;padding:8px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.card canvas{width:100%;height:auto}
+.card .txt{font-size:11px;color:#334155;margin-top:4px;word-break:break-all;text-align:center}
+@page{size:A4;margin:10mm}
+@media print{
+  body{background:#fff}
+  .topbar,.panel,.foot{display:none}
+  .sheet-wrap{border:none}
+  .sheet-grid{gap:8mm;padding:8mm}
+  .card{border:1px dashed #cbd5e1;padding:4mm}
+}
+.foot{text-align:center;color:#64748b;padding:12px}
+</style>
+</head>
+<body>
+<header class="topbar"><h1>Barcode Generator</h1></header>
+
+<main class="wrap">
+  <section class="panel">
+    <div class="row">
+      <label for="type">Type</label>
+      <select id="type"></select>
+
+      <label for="format">Format</label>
+      <select id="format">
+        <option value="ean13" selected>EAN-13</option>
+        <option value="upca">UPC-A</option>
+        <option value="code128">Code 128</option>
+        <option value="qrcode">QR Code</option>
+        <option value="datamatrix">GS1 DataMatrix</option>
+        <option value="isbn">ISBN → EAN-13</option>
+        <option value="issn">ISSN → EAN-13</option>
+        <option value="pharmacode">Pharmacode</option>
+        <option value="gs1-128">GS1-128</option>
+      </select>
+
+      <label for="fg">Color</label>
+      <input id="fg" type="color" value="#000000" />
+      <label class="chk"><input type="checkbox" id="remember" /> Remember</label>
+    </div>
+
+    <div class="row">
+      <label for="text">Code / Base</label>
+      <input id="text" type="text" placeholder="e.g., 8901234567890 or ABC{n}" />
+      <label for="addon">Addon</label>
+      <input id="addon" type="text" placeholder="Magazines: 2/5-digit; GS1 AIs ()" />
+    </div>
+
+    <div class="row">
+      <label for="count">Batch Count</label>
+      <input id="count" type="number" min="1" value="1" />
+      <label for="serialstart">Serial Start</label>
+      <input id="serialstart" type="number" min="0" value="1" />
+      <label for="serialpad">Pad</label>
+      <input id="serialpad" type="number" min="0" value="0" />
+    </div>
+
+    <div class="row">
+      <button id="btnPreview">Preview</button>
+      <button id="btnAdd">Add to Sheet</button>
+      <button id="btnClear">Clear Sheet</button>
+      <button id="btnPrint">Print Sheet</button>
+    </div>
+
+    <div class="preview">
+      <canvas id="preview" width="320" height="160"></canvas>
+      <div id="previewText" class="meta"></div>
+    </div>
+  </section>
+
+  <section class="sheet-wrap">
+    <div class="sheet-grid" id="sheet"></div>
+  </section>
+</main>
+
+<footer class="foot">
+  <small>A4 layout • 3×8 grid • dashed cut marks • localStorage “Remember”</small>
+</footer>
+
+<!-- Editable JSON for product “types” and their default format hints -->
+<script type="application/json" id="product-types">
+{
+  "types": [
+    { "id": "retail",        "label": "Retail (default)",   "hintFormat": "ean13" },
+    { "id": "book",          "label": "Book",               "hintFormat": "isbn" },
+    { "id": "magazine",      "label": "Magazine",           "hintFormat": "issn" },
+    { "id": "pharma",        "label": "Pharmaceutical",     "hintFormat": "datamatrix" },
+    { "id": "logistics",     "label": "Logistics",          "hintFormat": "code128" },
+    { "id": "coupon",        "label": "Coupon / Ticket",    "hintFormat": "qrcode" },
+    { "id": "food",          "label": "Food & Beverage",    "hintFormat": "ean13" },
+    { "id": "apparel",       "label": "Apparel",            "hintFormat": "ean13" },
+    { "id": "electronics",   "label": "Electronics",        "hintFormat": "ean13" },
+    { "id": "fresh",         "label": "Fresh Produce",      "hintFormat": "gs1-128" },
+    { "id": "medical-dev",   "label": "Medical Device",     "hintFormat": "datamatrix" },
+    { "id": "beverage-issn", "label": "Periodical Insert",  "hintFormat": "issn" },
+    { "id": "custom",        "label": "Custom",             "hintFormat": "ean13" }
+  ],
+  "sheet": { "cols": 3, "rows": 8 }
+}
+</script>
+
+<script>
+const $ = (id)=>document.getElementById(id)
+
+const DEFAULTS = {
+  type:'retail',
+  format:'ean13',
+  fg:'#000000',
+  text:'',
+  addon:'',
+  count:1,
+  serialstart:1,
+  serialpad:0,
+  remember:false
+}
+
+let TYPE_HINT = {}
+let SHEET_CFG = { cols:3, rows:8 }
+
+function readTypesJSON(){
+  try{
+    const raw = document.getElementById('product-types').textContent.trim()
+    const data = JSON.parse(raw)
+    const sel = $('#type')
+    sel.innerHTML = ''
+    data.types.forEach(t=>{
+      const opt = document.createElement('option')
+      opt.value = t.id
+      opt.textContent = t.label
+      sel.appendChild(opt)
+      TYPE_HINT[t.id] = t.hintFormat || 'ean13'
+    })
+    SHEET_CFG = data.sheet || SHEET_CFG
+    document.querySelector('.sheet-grid').style.setProperty('--cols', SHEET_CFG.cols)
+    document.querySelector('.sheet-grid').style.setProperty('--rows', SHEET_CFG.rows)
+  }catch(e){
+    console.error('Types JSON error:', e)
+  }
+}
+
+function loadState(){
+  const raw = localStorage.getItem('bcg_state')
+  if(!raw) return {...DEFAULTS}
+  try{ return {...DEFAULTS, ...JSON.parse(raw)} }catch{ return {...DEFAULTS} }
+}
+function saveState(){
+  if(!$('#remember').checked) return
+  const state = {
+    type:$('#type').value,
+    format:$('#format').value,
+    fg:$('#fg').value,
+    text:$('#text').value,
+    addon:$('#addon').value,
+    count:parseInt($('#count').value||'1',10),
+    serialstart:parseInt($('#serialstart').value||'1',10),
+    serialpad:parseInt($('#serialpad').value||'0',10),
+    remember:$('#remember').checked
+  }
+  localStorage.setItem('bcg_state', JSON.stringify(state))
+}
+function applyState(s){
+  $('#type').value = s.type
+  $('#format').value = s.format
+  $('#fg').value = s.fg
+  $('#text').value = s.text
+  $('#addon').value = s.addon
+  $('#count').value = s.count
+  $('#serialstart').value = s.serialstart
+  $('#serialpad').value = s.serialpad
+  $('#remember').checked = !!s.remember
+}
+
+function pickFormatByType(){
+  const t = $('#type').value
+  const hint = TYPE_HINT[t] || 'ean13'
+  $('#format').value = hint
+}
+
+function gs1WithCheck(num12){
+  if(!/^[0-9]{12}$/.test(num12)) return num12
+  let sum=0
+  for(let i=0;i<12;i++){ const d=+num12[i]; sum+= (i%2?3:1)*d }
+  const cd=(10-(sum%10))%10
+  return num12+cd
+}
+function upcWithCheck(num11){
+  if(!/^[0-9]{11}$/.test(num11)) return num11
+  let odd=0,even=0
+  for(let i=0;i<11;i++){ const d=+num11[i]; if(i%2===0) odd+=d; else even+=d }
+  const cd=(10-((odd*3+even)%10))%10
+  return num11+cd
+}
+
+function normalizeInput(fmt, text, addon){
+  if(fmt==='isbn'){
+    let num = text.replace(/[^0-9Xx]/g,'').toUpperCase()
+    if(num.length===10){ num = '978' + num.slice(0,9); num = gs1WithCheck(num) }
+    if(num.length===12){ num = gs1WithCheck(num) }
+    return { sym:'ean13', text:num, opts:{includetext:true, textxalign:'center'} }
+  }
+  if(fmt==='issn'){
+    let num = text.replace(/[^0-9]/g,'')
+    if(num.length===8){ num = '977' + num.slice(0,7) + '00'; num = gs1WithCheck(num) }
+    if(num.length===12){ num = gs1WithCheck(num) }
+    return { sym:'ean13', text:num, opts:{includetext:true, textxalign:'center', addons:addon?.trim()||''} }
+  }
+  if(fmt==='ean13'){
+    let num = text.replace(/[^0-9]/g,'')
+    if(num.length===12){ num = gs1WithCheck(num) }
+    return { sym:'ean13', text:num, opts:{includetext:true, textxalign:'center', addons:addon?.trim()||''} }
+  }
+  if(fmt==='upca'){
+    let num = text.replace(/[^0-9]/g,'')
+    if(num.length===11){ num = upcWithCheck(num) }
+    return { sym:'upca', text:num, opts:{includetext:true, textxalign:'center'} }
+  }
+  if(fmt==='code128'){ return { sym:'code128', text, opts:{includetext:true, textxalign:'center'} } }
+  if(fmt==='qrcode'){ return { sym:'qrcode', text, opts:{} } }
+  if(fmt==='datamatrix'){ return { sym:'datamatrix', text, opts:{} } }
+  if(fmt==='pharmacode'){ return { sym:'pharmacode', text:text.replace(/[^0-9]/g,''), opts:{} } }
+  if(fmt==='gs1-128'){ return { sym:'gs1-128', text, opts:{includetext:true, textxalign:'center'} } }
+  return { sym:'ean13', text, opts:{includetext:true} }
+}
+
+function drawToCanvas(canvas, sym, text, opts, color){
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0,0,canvas.width,canvas.height)
+  const params = { bcid:sym, text, scale:2, height:12, paddingwidth:8, paddingheight:8, background:'FFFFFF', includetext:false, ...opts }
+  if(color){ params.color = color.replace('#','') }
+  bwipjs.toCanvas(canvas, params)
+}
+
+function preview(){
+  const fmt = $('#format').value
+  const base = $('#text').value.trim()
+  const addon = $('#addon').value.trim()
+  const color = $('#fg').value
+  const conf = normalizeInput(fmt, base, addon)
+  if(!conf.text){ $('#previewText').textContent = 'Enter a code'; return }
+  try{
+    drawToCanvas($('#preview'), conf.sym, conf.text, conf.opts, color)
+    $('#previewText').textContent = conf.sym.toUpperCase() + ' • ' + conf.text
+  }catch(e){
+    $('#previewText').textContent = 'Error: ' + (e.message||e)
+  }
+}
+
+function generateBatchItems(){
+  const count = parseInt($('#count').value||'1',10)
+  const start = parseInt($('#serialstart').value||'1',10)
+  const pad = parseInt($('#serialpad').value||'0',10)
+  const base = $('#text').value.trim()
+  const items=[]
+  for(let i=0;i<count;i++){
+    const n = (start+i).toString().padStart(pad, '0')
+    items.push(base.replace(/\{n\}/g, n))
+  }
+  return items.length?items:['']
+}
+
+function addToSheet(){
+  const sheet = $('#sheet')
+  const color = $('#fg').value
+  const fmt = $('#format').value
+  const addon = $('#addon').value.trim()
+  const items = generateBatchItems()
+  items.forEach((val)=>{
+    const {sym,text,opts} = normalizeInput(fmt, val, addon)
+    if(!text) return
+    const card = document.createElement('div')
+    card.className='card'
+    const can = document.createElement('canvas')
+    can.width = 370
+    can.height = 180
+    try{
+      drawToCanvas(can, sym, text, opts, color)
+      const cap = document.createElement('div')
+      cap.className='txt'
+      cap.textContent = text
+      card.appendChild(can)
+      card.appendChild(cap)
+      sheet.appendChild(card)
+    }catch(e){}
+  })
+}
+
+function clearSheet(){ $('#sheet').innerHTML='' }
+function printSheet(){ window.print() }
+
+function wire(){
+  $('#type').addEventListener('change', ()=>{ pickFormatByType(); preview(); saveState() })
+  $('#format').addEventListener('change', ()=>{ preview(); saveState() })
+  $('#fg').addEventListener('input', ()=>{ preview(); saveState() })
+  $('#text').addEventListener('input', ()=>{ preview(); saveState() })
+  $('#addon').addEventListener('input', ()=>{ preview(); saveState() })
+  $('#count').addEventListener('input', saveState)
+  $('#serialstart').addEventListener('input', saveState)
+  $('#serialpad').addEventListener('input', saveState)
+  $('#remember').addEventListener('change', saveState)
+  $('#btnPreview').addEventListener('click', preview)
+  $('#btnAdd').addEventListener('click', ()=>{ addToSheet(); saveState() })
+  $('#btnClear').addEventListener('click', clearSheet)
+  $('#btnPrint').addEventListener('click', printSheet)
+}
+
+function boot(){
+  readTypesJSON()
+  applyState(loadState())
+  pickFormatByType()
+  preview()
+  wire()
+}
+document.addEventListener('DOMContentLoaded', boot)
+</script>
+</body>
+</html>
