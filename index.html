@@ -109,6 +109,7 @@ pointer-events:none}
   <small>A4 layout • 3×8 grid • dashed cut marks • localStorage “Remember”</small>
 </footer>
 
+<!-- Editable JSON for product “types” and default format hints -->
 <script type="application/json" id="product-types">
 {
   "types": [
@@ -258,21 +259,29 @@ function normalizeInput(fmt, text, addon){
   return { sym:'ean13', text, opts:{includetext:true} };
 }
 
-/* ===== Draw ===== */
-function drawToCanvas(canvas, sym, text, opts, color){
+/* ===== Unified renderer ===== */
+// Uses identical bwip-js params everywhere; export just increases scale.
+function drawToCanvas(canvas, sym, text, opts, color, scaleOverride){
   if(!canvas) return;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0,0,canvas.width,canvas.height);
+
   const params = {
-    bcid:sym, text,
-    scale:2, height:12,
-    paddingwidth:8, paddingheight:8,
-    backgroundcolor:'#FFFFFF',
-    includetext:false,
+    bcid: sym,
+    text,
+    scale: scaleOverride || 2,   // preview uses 2; export overrides with higher
+    height: 12,                  // consistent bar height setting
+    paddingwidth: 8,
+    paddingheight: 8,
+    backgroundcolor: '#FFFFFF',
+    includetext: false,          // normalizeInput enables when needed
     ...opts
   };
-  if(color){ params.barcolor = color; }
-  if(window.bwipjs && bwipjs.toCanvas){ bwipjs.toCanvas(canvas, params); }
+  if (color) params.barcolor = color;
+
+  if (window.bwipjs && bwipjs.toCanvas) {
+    bwipjs.toCanvas(canvas, params);
+  }
 }
 
 /* ===== UI actions ===== */
@@ -317,32 +326,23 @@ function addToSheet(){
 }
 function clearSheet(){ const s=g('sheet'); if(s) s.innerHTML=''; }
 
-/* ===== NEW: Download A4 PNG of current preview ===== */
-const A4PX = { w:2480, h:3508 };      // ≈300dpi
-const A4_MARGIN = 200;                 // px margin all around
+/* ===== Export: A4 PNG of current preview (pixel-perfect with preview) ===== */
+const A4PX = { w:2480, h:3508 };      // ~300 dpi
+const A4_MARGIN = 200;                 // not used for scaling, only centering
 function is2D(fmt){ return fmt==='qrcode' || fmt==='datamatrix'; }
-function makeHiResBarcodeCanvas(sym, text, opts, color, fmt){
-  const availW = A4PX.w - A4_MARGIN*2;
-  const bw = Math.max(600, availW);
-  const bh = is2D(fmt) ? bw : Math.max(600, Math.round(bw/2.2));
 
+// Render barcode at a high multiple of preview size using same params
+function makeHiResBarcodeCanvas(sym, text, opts, color){
+  const PRE_W = 370, PRE_H = 180;
+  const UPSCALE = 6;                   // 370*6 = 2220 px width (fits A4 nicely)
   const c = document.createElement('canvas');
-  c.width = bw; c.height = bh;
-
-  const params = {
-    bcid:sym, text,
-    width: Math.max(10, bw - 40),
-    paddingwidth:20, paddingheight:20,
-    backgroundcolor:'#FFFFFF',
-    includetext:true, textxalign:'center',
-    ...opts
-  };
-  if(!is2D(fmt)){ params.height = Math.max(10, Math.round((bh-40)/10)); }
-  if(color) params.barcolor = color;
-
-  if(window.bwipjs && bwipjs.toCanvas){ bwipjs.toCanvas(c, params); }
+  c.width  = PRE_W * UPSCALE;
+  c.height = PRE_H * UPSCALE;
+  // Increase bwip scale proportionally (preview scale=2 → export scale=2*UPSCALE)
+  drawToCanvas(c, sym, text, opts, color, 2 * UPSCALE);
   return c;
 }
+
 function downloadA4PNG(){
   const fmt   = g('format')?.value || 'ean13';
   const base  = (g('text')?.value || '').trim();
@@ -356,9 +356,10 @@ function downloadA4PNG(){
   const ctx = page.getContext('2d');
   ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0,0,page.width,page.height);
 
-  const bc = makeHiResBarcodeCanvas(conf.sym, conf.text, conf.opts, color, fmt);
-  const x = Math.round((page.width - bc.width)/2);
-  const y = Math.round((page.height - bc.height)/2);
+  const bc = makeHiResBarcodeCanvas(conf.sym, conf.text, conf.opts, color);
+  ctx.imageSmoothingEnabled = false;   // keep edges sharp
+  const x = Math.round((page.width  - bc.width)  / 2);
+  const y = Math.round((page.height - bc.height) / 2);
   ctx.drawImage(bc, x, y);
 
   const a = document.createElement('a');
@@ -383,7 +384,7 @@ function wire(){
   g('btnAdd')?.addEventListener('click', ()=>{ addToSheet(); saveState(); });
   g('btnClear')?.addEventListener('click', clearSheet);
 
-  /* changed: Print Sheet now downloads PNG */
+  // Print button now downloads A4 PNG of the current preview
   g('btnPrint')?.addEventListener('click', downloadA4PNG);
 }
 function boot(){
