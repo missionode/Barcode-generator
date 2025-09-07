@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Barcode Generator</title>
 <link rel="icon" href="data:,">
-<!-- bwip-js for barcodes -->
 <script src="https://unpkg.com/bwip-js/dist/bwip-js-min.js" defer></script>
 <style>
 *{box-sizing:border-box}
@@ -29,11 +28,11 @@ button:active{transform:translateY(1px)}
 repeating-linear-gradient(to right, transparent 0  calc((100% - (var(--cols)-1)*var(--gap))/var(--cols)), #e5e7eb calc((100% - (var(--cols)-1)*var(--gap))/var(--cols)) calc((100% - (var(--cols)-1)*var(--gap))/var(--cols) + var(--gap))),
 repeating-linear-gradient(to bottom, transparent 0 calc((100% - (var(--rows)-1)*var(--gap))/var(--rows)), #e5e7eb calc((100% - (var(--rows)-1)*var(--gap))/var(--rows)) calc((100% - (var(--rows)-1)*var(--gap))/var(--rows) + var(--gap)));
 mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-pointer-events:none;
-}
+pointer-events:none}
 .card{border:1px dashed #cbd5e1;border-radius:10px;background:#fff;padding:8px;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .card canvas{width:100%;height:auto}
-.card .txt{font-size:11px;color:#334155;margin-top:4px;word-break:break-all;text-align:center}
+/* removed .card .txt (we no longer add a caption) */
+
 @page{size:A4;margin:10mm}
 @media print{
   body{background:#fff}
@@ -41,6 +40,9 @@ pointer-events:none;
   .sheet-wrap{border:none}
   .sheet-grid{gap:8mm;padding:8mm}
   .card{border:1px dashed #cbd5e1;padding:4mm}
+  /* help some mobile print engines keep raster sharp */
+  canvas{image-rendering: crisp-edges; image-rendering: pixelated;}
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 .foot{text-align:center;color:#64748b;padding:12px}
 </style>
@@ -110,7 +112,6 @@ pointer-events:none;
   <small>A4 layout • 3×8 grid • dashed cut marks • localStorage “Remember”</small>
 </footer>
 
-<!-- Editable JSON for product “types” and default format hints -->
 <script type="application/json" id="product-types">
 {
   "types": [
@@ -128,29 +129,23 @@ pointer-events:none;
     { "id": "beverage-issn", "label": "Periodical Insert",  "hintFormat": "issn" },
     { "id": "custom",        "label": "Custom",             "hintFormat": "ean13" }
   ],
-  "sheet": { "cols": 5, "rows": 8 }
+  "sheet": { "cols": 3, "rows": 8 }   /* back to 3×8 so labels aren't needle-thin */
 }
 </script>
 
 <script>
-/* ============ Helpers ============ */
+/* ===== Helpers ===== */
 const $ = (id)=>document.getElementById(id);
-
-// Safe getter: returns element or null (no crash).
 function g(id){ return document.getElementById(id) || null; }
-
-// Guard: verifies required nodes exist; if not, it creates minimal fallbacks.
 function ensureDom(){
-  // Ensure the Type select exists
   if(!g('type')){
     const row = document.querySelector('.panel .row');
     if(row){
       const lbl = document.createElement('label'); lbl.htmlFor='type'; lbl.textContent='Type';
       const sel = document.createElement('select'); sel.id='type';
-      row.insertBefore(sel, row.firstChild.nextSibling); // after first label if present
+      row.insertBefore(sel, row.firstChild.nextSibling);
     }
   }
-  // Ensure other inputs exist; if they don’t, create them to avoid nulls.
   const needed = [
     ['format','select'],['fg','input'],['remember','input'],
     ['text','input'],['addon','input'],
@@ -170,7 +165,7 @@ function ensureDom(){
   });
 }
 
-/* ============ State ============ */
+/* ===== State ===== */
 const DEFAULTS = {
   type:'retail',
   format:'ean13',
@@ -182,48 +177,31 @@ const DEFAULTS = {
   serialpad:0,
   remember:false
 };
-
 let TYPE_HINT = {};
 let SHEET_CFG = { cols:3, rows:8 };
 
-/* ============ JSON Types ============ */
+/* ===== Types JSON ===== */
 function readTypesJSON(){
-  const block = g('product-types');
-  if(!block) return; // silently skip if missing
-  let data;
-  try{
-    data = JSON.parse(block.textContent.trim());
-  }catch(e){
-    return; // invalid JSON: skip population
-  }
-  const sel = g('type');
-  if(!sel) return; // DOM not ready / replaced: skip
+  const block = g('product-types'); if(!block) return;
+  let data; try{ data = JSON.parse(block.textContent.trim()); }catch{ return; }
+  const sel = g('type'); if(!sel) return;
   sel.innerHTML = '';
   (data.types||[]).forEach(t=>{
-    const opt = document.createElement('option');
-    opt.value = t.id;
-    opt.textContent = t.label;
-    sel.appendChild(opt);
-    TYPE_HINT[t.id] = t.hintFormat || 'ean13';
+    const opt = document.createElement('option'); opt.value=t.id; opt.textContent=t.label;
+    sel.appendChild(opt); TYPE_HINT[t.id]=t.hintFormat||'ean13';
   });
   SHEET_CFG = data.sheet || SHEET_CFG;
   const grid = document.querySelector('.sheet-grid');
-  if(grid){
-    grid.style.setProperty('--cols', SHEET_CFG.cols);
-    grid.style.setProperty('--rows', SHEET_CFG.rows);
-  }
+  if(grid){ grid.style.setProperty('--cols', SHEET_CFG.cols); grid.style.setProperty('--rows', SHEET_CFG.rows); }
 }
 
-/* ============ Persist ============ */
+/* ===== Persist ===== */
 function loadState(){
-  try{
-    const raw = localStorage.getItem('bcg_state');
-    return raw ? {...DEFAULTS, ...JSON.parse(raw)} : {...DEFAULTS};
-  }catch{ return {...DEFAULTS}; }
+  try{ const raw = localStorage.getItem('bcg_state'); return raw ? {...DEFAULTS, ...JSON.parse(raw)} : {...DEFAULTS}; }
+  catch{ return {...DEFAULTS}; }
 }
 function saveState(){
-  const rem = g('remember');
-  if(!rem || !rem.checked) return;
+  const rem = g('remember'); if(!rem || !rem.checked) return;
   const state = {
     type: g('type')?.value || DEFAULTS.type,
     format: g('format')?.value || DEFAULTS.format,
@@ -249,7 +227,7 @@ function applyState(s){
   if(g('remember')) g('remember').checked = !!s.remember;
 }
 
-/* ============ Format helpers ============ */
+/* ===== Format helpers ===== */
 function pickFormatByType(){
   const t = g('type')?.value || 'retail';
   const hint = TYPE_HINT[t] || 'ean13';
@@ -257,41 +235,35 @@ function pickFormatByType(){
 }
 function gs1WithCheck(num12){
   if(!/^[0-9]{12}$/.test(num12)) return num12;
-  let sum=0;
-  for(let i=0;i<12;i++){ const d=+num12[i]; sum+= (i%2?3:1)*d }
-  const cd=(10-(sum%10))%10;
-  return num12+cd;
+  let sum=0; for(let i=0;i<12;i++){ const d=+num12[i]; sum+= (i%2?3:1)*d }
+  const cd=(10-(sum%10))%10; return num12+cd;
 }
 function upcWithCheck(num11){
   if(!/^[0-9]{11}$/.test(num11)) return num11;
-  let odd=0,even=0;
-  for(let i=0;i<11;i++){ const d=+num11[i]; if(i%2===0) odd+=d; else even+=d }
-  const cd=(10-((odd*3+even)%10))%10;
-  return num11+cd;
+  let odd=0,even=0; for(let i=0;i<11;i++){ const d=+num11[i]; if(i%2===0) odd+=d; else even+=d }
+  const cd=(10-((odd*3+even)%10))%10; return num11+cd;
 }
 function normalizeInput(fmt, text, addon){
   if(fmt==='isbn'){
-    let num = text.replace(/[^0-9Xx]/g,'').toUpperCase();
-    if(num.length===10){ num = '978' + num.slice(0,9); num = gs1WithCheck(num) }
-    if(num.length===12){ num = gs1WithCheck(num) }
+    let num=text.replace(/[^0-9Xx]/g,'').toUpperCase();
+    if(num.length===10){ num='978'+num.slice(0,9); num=gs1WithCheck(num) }
+    if(num.length===12){ num=gs1WithCheck(num) }
     return { sym:'ean13', text:num, opts:{includetext:true, textxalign:'center'} };
   }
   if(fmt==='issn'){
-    let num = text.replace(/[^0-9]/g,'');
-    if(num.length===8){ num = '977' + num.slice(0,7) + '00'; num = gs1WithCheck(num) }
-    if(num.length===12){ num = gs1WithCheck(num) }
-    const atxt = addon ? addon.trim() : '';
+    let num=text.replace(/[^0-9]/g,'');
+    if(num.length===8){ num='977'+num.slice(0,7)+'00'; num=gs1WithCheck(num) }
+    if(num.length===12){ num=gs1WithCheck(num) }
+    const atxt = addon?addon.trim():'';
     return { sym:'ean13', text:num, opts:{includetext:true, textxalign:'center', addontext:atxt} };
   }
   if(fmt==='ean13'){
-    let num = text.replace(/[^0-9]/g,'');
-    if(num.length===12){ num = gs1WithCheck(num) }
-    const atxt = addon ? addon.trim() : '';
+    let num=text.replace(/[^0-9]/g,''); if(num.length===12){ num=gs1WithCheck(num) }
+    const atxt = addon?addon.trim():'';
     return { sym:'ean13', text:num, opts:{includetext:true, textxalign:'center', addontext:atxt} };
   }
   if(fmt==='upca'){
-    let num = text.replace(/[^0-9]/g,'');
-    if(num.length===11){ num = upcWithCheck(num) }
+    let num=text.replace(/[^0-9]/g,''); if(num.length===11){ num=upcWithCheck(num) }
     return { sym:'upca', text:num, opts:{includetext:true, textxalign:'center'} };
   }
   if(fmt==='code128'){ return { sym:'code128', text, opts:{includetext:true, textxalign:'center'} }; }
@@ -306,18 +278,18 @@ function drawToCanvas(canvas, sym, text, opts, color){
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0,0,canvas.width,canvas.height);
   const params = {
-    bcid:sym, text, scale:2, height:12,
+    bcid:sym, text,
+    scale:2, height:12,
     paddingwidth:8, paddingheight:8,
-    backgroundcolor:'#FFFFFF', includetext:false, ...opts
+    backgroundcolor:'#FFFFFF',
+    includetext:false, /* default, opts may turn it on */
+    ...opts
   };
   if(color){ params.barcolor = color; }
-  // bwipjs may not be ready if the script hasn't loaded yet (defer fixes this)
-  if(window.bwipjs && bwipjs.toCanvas){
-    bwipjs.toCanvas(canvas, params);
-  }
+  if(window.bwipjs && bwipjs.toCanvas){ bwipjs.toCanvas(canvas, params); }
 }
 
-/* ============ Actions ============ */
+/* ===== Actions ===== */
 function preview(){
   const fmt = g('format')?.value || 'ean13';
   const base = (g('text')?.value || '').trim();
@@ -325,9 +297,12 @@ function preview(){
   const color = g('fg')?.value || '#000000';
   const conf = normalizeInput(fmt, base, addon);
   if(!conf.text){ if(g('previewText')) g('previewText').textContent = 'Enter a code'; return; }
+  /* preview canvas size kept modest */
+  const c = g('preview'); if(c){ c.width = 370; c.height = 180; }
   drawToCanvas(g('preview'), conf.sym, conf.text, conf.opts, color);
   if(g('previewText')) g('previewText').textContent = conf.sym.toUpperCase() + ' • ' + conf.text;
 }
+
 function generateBatchItems(){
   const count = parseInt(g('count')?.value||'1',10);
   const start = parseInt(g('serialstart')?.value||'1',10);
@@ -340,30 +315,42 @@ function generateBatchItems(){
   }
   return items.length?items:[''];
 }
+
 function addToSheet(){
   const sheet = g('sheet'); if(!sheet) return;
   const color = g('fg')?.value || '#000000';
   const fmt = g('format')?.value || 'ean13';
   const addon = (g('addon')?.value || '').trim();
   const items = generateBatchItems();
+
   items.forEach((val)=>{
     const {sym,text,opts} = normalizeInput(fmt, val, addon);
     if(!text) return;
+
     const card = document.createElement('div');
     card.className='card';
+
+    /* FIX #2: use sane canvas size per card (not full A4).
+       These match the preview and print well within a 3×8 grid. */
     const can = document.createElement('canvas');
-    can.width = 2480; can.height = 3508;
+    can.width = 370;
+    can.height = 180;
+
     drawToCanvas(can, sym, text, opts, color);
-    const cap = document.createElement('div');
-    cap.className='txt'; cap.textContent = text;
-    card.appendChild(can); card.appendChild(cap);
+
+    /* FIX #1: DO NOT add a caption under the barcode (avoid duplicate code text) */
+    // const cap = document.createElement('div'); cap.className='txt'; cap.textContent = text;
+    // card.appendChild(cap);
+
+    card.appendChild(can);
     sheet.appendChild(card);
   });
 }
+
 function clearSheet(){ const s=g('sheet'); if(s) s.innerHTML=''; }
 function printSheet(){ window.print(); }
 
-/* ============ Wiring & Boot ============ */
+/* ===== Wire & Boot ===== */
 function wire(){
   g('type')?.addEventListener('change', ()=>{ pickFormatByType(); preview(); saveState(); });
   g('format')?.addEventListener('change', ()=>{ preview(); saveState(); });
@@ -381,11 +368,11 @@ function wire(){
 }
 
 function boot(){
-  ensureDom();          // create any missing nodes to avoid nulls
-  readTypesJSON();      // populate #type from JSON
+  ensureDom();
+  readTypesJSON();
   const state = loadState();
-  applyState(state);    // apply saved state (no crashes if some nodes absent)
-  if (!state.remember || !state.format) { pickFormatByType(); } // set format based on type only if not remembered
+  applyState(state);
+  if (!state.remember || !state.format) { pickFormatByType(); }
   preview();
   wire();
 }
